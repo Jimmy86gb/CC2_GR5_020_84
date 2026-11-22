@@ -6,6 +6,28 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
+static double tiempoActualMicros() {
+#ifdef _WIN32
+	static double factorMicros = 0.0;
+	if (factorMicros == 0.0) {
+		LARGE_INTEGER freq;
+		QueryPerformanceFrequency(&freq);
+		factorMicros = 1000000.0 / static_cast<double>(freq.QuadPart);
+	}
+	LARGE_INTEGER ahora;
+	QueryPerformanceCounter(&ahora);
+	return static_cast<double>(ahora.QuadPart) * factorMicros;
+#else
+	auto ahora = std::chrono::steady_clock::now().time_since_epoch();
+	return std::chrono::duration<double, std::micro>(ahora).count();
+#endif
+}
 
 grafo::grafo() {}
 
@@ -317,7 +339,7 @@ int grafo::insertarEntregaConectada(const std::string& nombre, double x, double 
 // 1. DIJKSTRA (tu implementacion original adaptada para devolver resultados)
 // ============================================================================
 ResultadoDijkstra grafo::Dijkstra(int valorInicial) const {
-	auto tInicio = std::chrono::high_resolution_clock::now();
+	double tInicio = tiempoActualMicros();
 	
 	ResultadoDijkstra res;
 	res.huboPesoNegativo = false;
@@ -366,8 +388,7 @@ ResultadoDijkstra grafo::Dijkstra(int valorInicial) const {
 		}
 	}
 	
-	auto tFin = std::chrono::high_resolution_clock::now();
-	res.tiempoMicros = std::chrono::duration<double, std::micro>(tFin - tInicio).count();
+	res.tiempoMicros = tiempoActualMicros() - tInicio;
 	return res;
 }
 
@@ -393,7 +414,7 @@ std::vector<int> grafo::reconstruirCamino(int origen, int destino, const std::ma
 }
 
 double grafo::precalcularMatrizDijkstra() {
-	auto t0 = std::chrono::high_resolution_clock::now();
+	double t0 = tiempoActualMicros();
 	matrizDistancias.clear();
 	matrizPredecesores.clear();
 	
@@ -404,8 +425,7 @@ double grafo::precalcularMatrizDijkstra() {
 		matrizPredecesores[id] = res.predecesor;
 	}
 	
-	auto t1 = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration<double, std::micro>(t1 - t0).count();
+	return tiempoActualMicros() - t0;
 }
 
 // ============================================================================
@@ -414,7 +434,7 @@ double grafo::precalcularMatrizDijkstra() {
 ResultadoColoreado grafo::colorearZonas(int umbralMetros, int capacidadMaxZona, int metodo, int modoConflicto) {
 	if (matrizDistancias.empty()) precalcularMatrizDijkstra();
 	
-	auto tInicio = std::chrono::high_resolution_clock::now();
+	double tInicio = tiempoActualMicros();
 	
 	std::vector<nodo*> entregas = obtenerNodosPorTipo(ENTREGA);
 	std::map<int, std::set<int>> conflictos;
@@ -456,8 +476,7 @@ ResultadoColoreado grafo::colorearZonas(int umbralMetros, int capacidadMaxZona, 
 		coloresUnicos.insert(c);
 	}
 	
-	auto tFin = std::chrono::high_resolution_clock::now();
-	double micros = std::chrono::duration<double, std::micro>(tFin - tInicio).count();
+	double micros = tiempoActualMicros() - tInicio;
 	
 	return {
 		static_cast<int>(coloresUnicos.size()),
@@ -610,7 +629,7 @@ std::vector<RutaZona> grafo::planificarRutasFlota() const {
 		if (idDepot == -1) continue;
 		
 		// --- A. Dijkstra repetido paso a paso ---
-		auto t0 = std::chrono::high_resolution_clock::now();
+		double t0 = tiempoActualMicros();
 		std::vector<int> visitasDijk;
 		std::vector<int> callesDijk;
 		int distDijk = 0;
@@ -654,17 +673,15 @@ std::vector<RutaZona> grafo::planificarRutasFlota() const {
 		}
 		visitasDijk.push_back(idDepot);
 		
-		auto t1 = std::chrono::high_resolution_clock::now();
-		double microsDijk = std::chrono::duration<double, std::micro>(t1 - t0).count();
+		double microsDijk = tiempoActualMicros() - t0;
 		
 		// --- B. Heuristica TSP simple (Vecino Mas Cercano + 2-Opt sobre matriz) ---
-		auto t2 = std::chrono::high_resolution_clock::now();
+		double t2 = tiempoActualMicros();
 		std::vector<int> tour = construirTourTSP(idDepot, idsZona);
 		if (tour.size() > 4) tour = mejorar2Opt(tour);
 		int distTSP = evaluarCostoTour(tour);
 		std::vector<int> callesTSP = expandirCalles(tour);
-		auto t3 = std::chrono::high_resolution_clock::now();
-		double microsTSP = std::chrono::duration<double, std::micro>(t3 - t2).count();
+		double microsTSP = tiempoActualMicros() - t2;
 		
 		rutas.push_back({
 			idZona, idDepot, cargaTotal,
