@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include <wx/msgdlg.h>
+#include <wx/filedlg.h>
 #include <wx/dcclient.h>
 #include <wx/pen.h>
 #include <wx/brush.h>
@@ -8,6 +9,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <limits>
 
 using namespace std;
 
@@ -19,7 +21,8 @@ MapaCanvas::MapaCanvas(wxWindow* parent, wxPoint pos, wxSize size, grafo* grafoR
 	miGrafo(grafoRef),
 	zonaFiltro(-1),
 	mostrarConflictos(false),
-	mostrarPesos(true) {
+	mostrarPesos(true),
+	usarRutasTSP(true) {
 	
 	SetBackgroundColour(wxColour(245, 248, 252));
 	Bind(wxEVT_PAINT, &MapaCanvas::OnPaint, this);
@@ -28,9 +31,11 @@ MapaCanvas::MapaCanvas(wxWindow* parent, wxPoint pos, wxSize size, grafo* grafoR
 
 void MapaCanvas::actualizarDatosVisuales(
 										 const map<int, set<int>>& conflictos,
-										 const vector<RutaZona>& rutas) {
+										 const vector<RutaZona>& rutas,
+										 bool dibujarTSP) {
 	grafoConflictos = conflictos;
 	rutasActivas = rutas;
+	usarRutasTSP = dibujarTSP;
 	Refresh();
 }
 
@@ -74,9 +79,7 @@ wxColour MapaCanvas::obtenerColorZona(int indiceZona) const {
 }
 
 void MapaCanvas::OnMouseLeftDown(wxMouseEvent& event) {
-	if (onClicMapa) {
-		onClicMapa(event.GetX(), event.GetY());
-	}
+	if (onClicMapa) onClicMapa(event.GetX(), event.GetY());
 }
 
 void MapaCanvas::OnPaint(wxPaintEvent& event) {
@@ -85,7 +88,6 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 	dc.Clear();
 	
 	if (!miGrafo) return;
-	
 	wxSize tam = GetClientSize();
 	
 	// 1. Cuadricula cartografica
@@ -93,7 +95,7 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 	for (int x = 0; x < tam.GetWidth(); x += 45) dc.DrawLine(x, 0, x, tam.GetHeight());
 	for (int y = 0; y < tam.GetHeight(); y += 45) dc.DrawLine(0, y, tam.GetWidth(), y);
 	
-	// 2. Halos de cobertura por zona
+	// 2. Halos de zonas coloreadas
 	for (nodo* n : miGrafo->obtenerNodosPorTipo(ENTREGA)) {
 		int z = n->getColorZona();
 		if (z < 0) continue;
@@ -107,7 +109,7 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 					   );
 		dc.SetPen(wxPen(cZona, 1, wxPENSTYLE_DOT));
 		dc.SetBrush(wxBrush(cHalo));
-		dc.DrawCircle(static_cast<int>(n->getX()), static_cast<int>(n->getY()), 28);
+		dc.DrawCircle(static_cast<int>(n->getX()), static_cast<int>(n->getY()), 26);
 	}
 	
 	// 3. Grafo de conflictos
@@ -130,7 +132,7 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 		}
 	}
 	
-	// 4. Red vial OSM y pesos
+	// 4. Red vial OSM y distancias
 	dc.SetFont(wxFont(8, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 	for (nodo* u : miGrafo->getNodos()) {
 		for (const auto& par : u->getAdyacentes()) {
@@ -149,18 +151,16 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 				dc.DrawLine(x1, y1, x2, y2);
 				
 				if (mostrarPesos) {
-					int mx = (x1 + x2) / 2;
-					int my = (y1 + y2) / 2;
 					wxString txtPeso;
 					txtPeso << peso << "m";
 					dc.SetTextForeground(wxColour(100, 116, 139));
-					dc.DrawText(txtPeso, mx - 10, my - 7);
+					dc.DrawText(txtPeso, (x1 + x2) / 2 - 10, (y1 + y2) / 2 - 7);
 				}
 			}
 		}
 	}
 	
-	// 5. Rutas TSP por zona con flechas
+	// 5. Rutas por zona con flechas
 	for (const RutaZona& ruta : rutasActivas) {
 		int z = ruta.idZona;
 		if (zonaFiltro != -1 && zonaFiltro != z) continue;
@@ -170,8 +170,8 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 		dc.SetBrush(wxBrush(colorFlota));
 		
 		int offset = (z % 4) * 2 - 3;
+		const vector<int>& camino = usarRutasTSP ? ruta.callesTSP : ruta.callesDijkstraRep;
 		
-		const vector<int>& camino = ruta.trazadoCalles;
 		for (size_t i = 0; i + 1 < camino.size(); ++i) {
 			nodo* u = miGrafo->buscarNodo(camino[i]);
 			nodo* v = miGrafo->buscarNodo(camino[i + 1]);
@@ -187,20 +187,20 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 			double mx = (x1 + x2) * 0.5;
 			double my = (y1 + y2) * 0.5;
 			double ang = std::atan2(static_cast<double>(y2 - y1), static_cast<double>(x2 - x1));
-			double tamFlecha = 6.0;
+			double tamF = 6.0;
 			
 			wxPoint flecha[3];
-			flecha[0] = wxPoint(static_cast<int>(mx + tamFlecha * std::cos(ang)),
-								static_cast<int>(my + tamFlecha * std::sin(ang)));
-			flecha[1] = wxPoint(static_cast<int>(mx - tamFlecha * std::cos(ang - 0.6)),
-								static_cast<int>(my - tamFlecha * std::sin(ang - 0.6)));
-			flecha[2] = wxPoint(static_cast<int>(mx - tamFlecha * std::cos(ang + 0.6)),
-								static_cast<int>(my - tamFlecha * std::sin(ang + 0.6)));
+			flecha[0] = wxPoint(static_cast<int>(mx + tamF * std::cos(ang)),
+								static_cast<int>(my + tamF * std::sin(ang)));
+			flecha[1] = wxPoint(static_cast<int>(mx - tamF * std::cos(ang - 0.6)),
+								static_cast<int>(my - tamF * std::sin(ang - 0.6)));
+			flecha[2] = wxPoint(static_cast<int>(mx - tamF * std::cos(ang + 0.6)),
+								static_cast<int>(my - tamF * std::sin(ang + 0.6)));
 			dc.DrawPolygon(3, flecha);
 		}
 	}
 	
-	// 6. Camino corto resaltado (Dijkstra vs A*)
+	// 6. Camino corto individual resaltado (Dijkstra)
 	if (caminoIndividual.size() >= 2) {
 		dc.SetPen(wxPen(wxColour(250, 204, 21), 7, wxPENSTYLE_SOLID));
 		for (size_t i = 0; i + 1 < caminoIndividual.size(); ++i) {
@@ -236,10 +236,14 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 			
 			dc.SetFont(wxFont(8, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 			dc.SetTextForeground(wxColour(255, 255, 255));
-			dc.DrawText("DEP", x - 10, y - 6);
+			wxString tag;
+			tag << "D" << id;
+			dc.DrawText(tag, x - 7, y - 6);
 			
 			dc.SetTextForeground(wxColour(15, 23, 42));
-			dc.DrawText("[1] DEPOT CENTRAL", x - 48, y + 15);
+			wxString lblDep;
+			lblDep << "[" << id << "] " << n->getNombre();
+			dc.DrawText(lblDep, x - 40, y + 15);
 			
 		} else if (n->getTipo() == INTERSECCION) {
 			dc.SetPen(wxPen(wxColour(255, 255, 255), 1, wxPENSTYLE_SOLID));
@@ -271,109 +275,118 @@ void MapaCanvas::OnPaint(wxPaintEvent& event) {
 		}
 	}
 	
-	// 8. Barra de leyenda superior
+	// 8. Leyenda superior
 	dc.SetPen(wxPen(wxColour(203, 213, 225), 1, wxPENSTYLE_SOLID));
 	dc.SetBrush(wxBrush(wxColour(255, 255, 255)));
 	dc.DrawRoundedRectangle(8, 6, tam.GetWidth() - 16, 24, 4);
 	dc.SetFont(wxFont(8, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	dc.SetTextForeground(wxColour(30, 41, 59));
-	dc.DrawText("MAPA VIAL OSM  |  Cuadro Negro = Depot  |  Circulos Coloreados = Entregas por Zona (Flota)  |  Clic Izquierdo = Capturar X,Y", 16, 11);
+	dc.DrawText("MAPA VIAL OSM  |  Cuadro Negro = Depot  |  Circulos Coloreados = Entregas por Zona  |  Clic = Capturar X,Y", 16, 11);
 }
 
 // ============================================================================
 // VENTANA PRINCIPAL (MainWindow)
 // ============================================================================
 MainWindow::MainWindow()
-	: wxFrame(NULL, wxID_ANY, "Proyecto 3 - Segmentacion y Logistica Ultima-Milla (Dijkstra / A* + Coloreado + TSP 2-Opt)",
-			  wxDefaultPosition, wxSize(1220, 740)) {
+	: wxFrame(NULL, wxID_ANY, "Proyecto 3 - Logistica Ultima-Milla (Dijkstra + Coloreado + Ruteo)",
+			  wxDefaultPosition, wxSize(1220, 745)) {
 	
 	wxPanel* panel = new wxPanel(this, wxID_ANY);
 	panel->SetBackgroundColour(wxColour(238, 242, 246));
 	
 	miGrafo.cargarRedVialOSM();
 	
-	// SECCION 1
-	wxStaticText* lblSec1 = new wxStaticText(panel, wxID_ANY, "1. SEGMENTACION DE ZONAS (COLOREADO)", wxPoint(15, 12));
+	// SECCION 1: COLOREADO DE ZONAS
+	wxStaticText* lblSec1 = new wxStaticText(panel, wxID_ANY, "1. SEGMENTACION DE ZONAS (COLOREADO)", wxPoint(15, 10));
 	lblSec1->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	new wxStaticText(panel, wxID_ANY, "Algoritmo Heuristico:", wxPoint(15, 38));
-	choiceAlgoritmoColoreado = new wxChoice(panel, wxID_ANY, wxPoint(155, 34), wxSize(185, 25));
+	new wxStaticText(panel, wxID_ANY, "Algoritmo:", wxPoint(15, 36));
+	choiceAlgoritmoColoreado = new wxChoice(panel, wxID_ANY, wxPoint(155, 32), wxSize(185, 24));
 	choiceAlgoritmoColoreado->Append("Welsh-Powell (Grado)");
 	choiceAlgoritmoColoreado->Append("DSATUR (Saturacion)");
 	choiceAlgoritmoColoreado->SetSelection(1);
 	
-	new wxStaticText(panel, wxID_ANY, "Criterio de Conflicto:", wxPoint(15, 68));
-	choiceModoConflicto = new wxChoice(panel, wxID_ANY, wxPoint(155, 64), wxSize(185, 25));
+	new wxStaticText(panel, wxID_ANY, "Regla Conflicto:", wxPoint(15, 64));
+	choiceModoConflicto = new wxChoice(panel, wxID_ANY, wxPoint(155, 60), wxSize(185, 24));
 	choiceModoConflicto->Append("Lejania (Zonas Compactas)");
 	choiceModoConflicto->Append("Vecindad (Reparto Mixto)");
 	choiceModoConflicto->SetSelection(0);
 	
-	new wxStaticText(panel, wxID_ANY, "Umbral Conflicto (m):", wxPoint(15, 98));
-	spinUmbralConflicto = new wxSpinCtrl(panel, wxID_ANY, "370", wxPoint(155, 94), wxSize(75, 24), wxSP_ARROW_KEYS, 100, 1500, 370);
+	new wxStaticText(panel, wxID_ANY, "Umbral Conflicto (m):", wxPoint(15, 92));
+	spinUmbralConflicto = new wxSpinCtrl(panel, wxID_ANY, "370", wxPoint(155, 88), wxSize(75, 24), wxSP_ARROW_KEYS, 80, 1500, 370);
 	
-	new wxStaticText(panel, wxID_ANY, "Carga Max. Zona (paq):", wxPoint(15, 126));
-	spinCapacidadZona = new wxSpinCtrl(panel, wxID_ANY, "45", wxPoint(155, 122), wxSize(75, 24), wxSP_ARROW_KEYS, 15, 200, 45);
+	new wxStaticText(panel, wxID_ANY, "Carga Max. Zona (paq):", wxPoint(15, 120));
+	spinCapacidadZona = new wxSpinCtrl(panel, wxID_ANY, "45", wxPoint(155, 116), wxSize(75, 24), wxSP_ARROW_KEYS, 15, 200, 45);
 	
-	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 150));
+	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 144));
 	
-	// SECCION 2
-	wxStaticText* lblSec2 = new wxStaticText(panel, wxID_ANY, "2. RUTEO INTRA-ZONA (TSP) Y CAPAS", wxPoint(15, 168));
+	// SECCION 2: RUTEO INTRA-ZONA Y CAPAS
+	wxStaticText* lblSec2 = new wxStaticText(panel, wxID_ANY, "2. RUTEO POR ZONA Y CAPAS DEL MAPA", wxPoint(15, 160));
 	lblSec2->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	chkOptimizar2Opt = new wxCheckBox(panel, wxID_ANY, "Activar Mejora Local 2-Opt sobre TSP Greedy", wxPoint(15, 192));
-	chkOptimizar2Opt->SetValue(true);
+	new wxStaticText(panel, wxID_ANY, "Mostrar Rutas:", wxPoint(15, 186));
+	choiceModoRuteo = new wxChoice(panel, wxID_ANY, wxPoint(115, 182), wxSize(225, 24));
+	choiceModoRuteo->Append("Heuristica TSP Simple + 2-Opt");
+	choiceModoRuteo->Append("Dijkstra Repetido (Paso a Paso)");
+	choiceModoRuteo->SetSelection(0);
 	
-	chkMostrarConflictos = new wxCheckBox(panel, wxID_ANY, "Dibujar Grafo de Conflictos (lineas rojas)", wxPoint(15, 214));
+	chkMostrarConflictos = new wxCheckBox(panel, wxID_ANY, "Dibujar Grafo de Conflictos (lineas rojas)", wxPoint(15, 212));
 	chkMostrarConflictos->SetValue(false);
 	
-	chkMostrarPesos = new wxCheckBox(panel, wxID_ANY, "Mostrar Distancias (m) en las Calles", wxPoint(15, 236));
+	chkMostrarPesos = new wxCheckBox(panel, wxID_ANY, "Mostrar Distancias (m) en las Calles", wxPoint(15, 234));
 	chkMostrarPesos->SetValue(true);
 	
-	new wxStaticText(panel, wxID_ANY, "Filtrar Vehiculo/Zona:", wxPoint(15, 264));
-	choiceFiltroZona = new wxChoice(panel, wxID_ANY, wxPoint(155, 260), wxSize(185, 25));
+	new wxStaticText(panel, wxID_ANY, "Filtrar Vehiculo:", wxPoint(15, 262));
+	choiceFiltroZona = new wxChoice(panel, wxID_ANY, wxPoint(125, 258), wxSize(215, 24));
 	choiceFiltroZona->Append("Todas las Zonas");
 	choiceFiltroZona->SetSelection(0);
 	
-	btnEjecutarPipeline = new wxButton(panel, wxID_ANY, "EJECUTAR SEGMENTACION Y RUTAS", wxPoint(15, 294), wxSize(325, 34));
+	btnEjecutarPipeline = new wxButton(panel, wxID_ANY, "EJECUTAR SEGMENTACION Y RUTAS", wxPoint(15, 290), wxSize(325, 32));
 	btnEjecutarPipeline->SetBackgroundColour(wxColour(52, 168, 83));
 	btnEjecutarPipeline->SetForegroundColour(wxColour(255, 255, 255));
 	btnEjecutarPipeline->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 332));
+	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 326));
 	
-	// SECCION 3
-	wxStaticText* lblSec3 = new wxStaticText(panel, wxID_ANY, "3. CAMINOS CORTOS (DIJKSTRA VS A*)", wxPoint(15, 348));
+	// SECCION 3: CONSULTA DIJKSTRA
+	wxStaticText* lblSec3 = new wxStaticText(panel, wxID_ANY, "3. CONSULTA DIJKSTRA (DEPOTS / POIs)", wxPoint(15, 342));
 	lblSec3->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	new wxStaticText(panel, wxID_ANY, "Nodo Origen:", wxPoint(15, 374));
-	choiceNodoOrigen = new wxChoice(panel, wxID_ANY, wxPoint(105, 370), wxSize(235, 25));
+	new wxStaticText(panel, wxID_ANY, "Origen:", wxPoint(15, 368));
+	choiceNodoOrigen = new wxChoice(panel, wxID_ANY, wxPoint(80, 364), wxSize(260, 24));
 	
-	new wxStaticText(panel, wxID_ANY, "Nodo Destino:", wxPoint(15, 404));
-	choiceNodoDestino = new wxChoice(panel, wxID_ANY, wxPoint(105, 400), wxSize(235, 25));
+	new wxStaticText(panel, wxID_ANY, "Destino:", wxPoint(15, 396));
+	choiceNodoDestino = new wxChoice(panel, wxID_ANY, wxPoint(80, 392), wxSize(260, 24));
 	
-	btnCompararCamino = new wxButton(panel, wxID_ANY, "Trazar Dijkstra vs A*", wxPoint(15, 432), wxSize(175, 28));
-	btnLimpiarCamino = new wxButton(panel, wxID_ANY, "Limpiar Trazo", wxPoint(200, 432), wxSize(140, 28));
+	btnTrazarDijkstra = new wxButton(panel, wxID_ANY, "Trazar Camino Dijkstra", wxPoint(15, 424), wxSize(180, 28));
+	btnLimpiarCamino = new wxButton(panel, wxID_ANY, "Limpiar Trazo", wxPoint(205, 424), wxSize(135, 28));
 	
-	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 464));
+	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 456));
 	
-	// SECCION 4
-	wxStaticText* lblSec4 = new wxStaticText(panel, wxID_ANY, "4. ANADIR ENTREGA (O CLIC EN MAPA)", wxPoint(15, 480));
+	// SECCION 4: CARGAR MAPA TXT Y AGREGAR ENTREGAS
+	wxStaticText* lblSec4 = new wxStaticText(panel, wxID_ANY, "4. ARCHIVOS .TXT Y NUEVAS ENTREGAS", wxPoint(15, 472));
 	lblSec4->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	new wxStaticText(panel, wxID_ANY, "Nombre POI:", wxPoint(15, 506));
-	txtNombreEntrega = new wxTextCtrl(panel, wxID_ANY, "Drogueria Central", wxPoint(105, 503), wxSize(145, 24));
+	btnCargarTXT = new wxButton(panel, wxID_ANY, "Cargar Mapa (.txt)...", wxPoint(15, 496), wxSize(175, 30));
+	btnCargarTXT->SetBackgroundColour(wxColour(37, 99, 235));
+	btnCargarTXT->SetForegroundColour(wxColour(255, 255, 255));
+	btnCargarTXT->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	new wxStaticText(panel, wxID_ANY, "Paq:", wxPoint(258, 506));
-	spinDemandaEntrega = new wxSpinCtrl(panel, wxID_ANY, "9", wxPoint(288, 503), wxSize(52, 24), wxSP_ARROW_KEYS, 1, 50, 9);
+	btnRestaurarMapa = new wxButton(panel, wxID_ANY, "Mapa Base OSM", wxPoint(200, 496), wxSize(140, 30));
 	
-	new wxStaticText(panel, wxID_ANY, "Coord X:", wxPoint(15, 536));
-	spinCoordX = new wxSpinCtrl(panel, wxID_ANY, "420", wxPoint(75, 533), wxSize(75, 24), wxSP_ARROW_KEYS, 30, 790, 420);
+	new wxStaticText(panel, wxID_ANY, "Nombre POI:", wxPoint(15, 536));
+	txtNombreEntrega = new wxTextCtrl(panel, wxID_ANY, "Drogueria Central", wxPoint(100, 533), wxSize(150, 24));
 	
-	new wxStaticText(panel, wxID_ANY, "Coord Y:", wxPoint(165, 536));
-	spinCoordY = new wxSpinCtrl(panel, wxID_ANY, "160", wxPoint(225, 533), wxSize(75, 24), wxSP_ARROW_KEYS, 35, 430, 160);
+	new wxStaticText(panel, wxID_ANY, "Paq:", wxPoint(258, 536));
+	spinDemandaEntrega = new wxSpinCtrl(panel, wxID_ANY, "9", wxPoint(288, 533), wxSize(52, 24), wxSP_ARROW_KEYS, 1, 50, 9);
 	
-	btnAgregarEntrega = new wxButton(panel, wxID_ANY, "Anadir Entrega al Mapa", wxPoint(15, 566), wxSize(175, 30));
-	btnRestaurarMapa = new wxButton(panel, wxID_ANY, "Restaurar Red OSM", wxPoint(200, 566), wxSize(140, 30));
+	new wxStaticText(panel, wxID_ANY, "Coord X:", wxPoint(15, 566));
+	spinCoordX = new wxSpinCtrl(panel, wxID_ANY, "420", wxPoint(75, 563), wxSize(75, 24), wxSP_ARROW_KEYS, 30, 790, 420);
+	
+	new wxStaticText(panel, wxID_ANY, "Coord Y:", wxPoint(165, 566));
+	spinCoordY = new wxSpinCtrl(panel, wxID_ANY, "160", wxPoint(225, 563), wxSize(75, 24), wxSP_ARROW_KEYS, 35, 430, 160);
+	
+	btnAgregarEntrega = new wxButton(panel, wxID_ANY, "Anadir Entrega al Mapa (o clic en mapa)", wxPoint(15, 596), wxSize(325, 28));
 	
 	// DERECHA: LIENZO + CONSOLA
 	lienzoMapa = new MapaCanvas(panel, wxPoint(355, 12), wxSize(835, 455), &miGrafo);
@@ -383,12 +396,12 @@ MainWindow::MainWindow()
 	});
 	
 	wxStaticText* lblConsola = new wxStaticText(panel, wxID_ANY,
-												"REPORTE DE ZONAS COLOREADAS, RUTAS POR VEHICULO Y COMPARATIVA DE TIEMPOS:",
+												"REPORTE DE DISTANCIAS DIJKSTRA, ZONAS COLOREADAS Y COMPARATIVA DE RUTAS:",
 												wxPoint(355, 473));
 	lblConsola->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
 	txtConsolaResultados = new wxTextCtrl(panel, wxID_ANY, "",
-										  wxPoint(355, 492), wxSize(835, 195),
+										  wxPoint(355, 492), wxSize(835, 198),
 										  wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH);
 	txtConsolaResultados->SetFont(wxFont(9, wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 	
@@ -396,16 +409,17 @@ MainWindow::MainWindow()
 	btnEjecutarPipeline->Bind(wxEVT_BUTTON, &MainWindow::OnEjecutarClick, this);
 	choiceAlgoritmoColoreado->Bind(wxEVT_CHOICE, &MainWindow::OnEjecutarClick, this);
 	choiceModoConflicto->Bind(wxEVT_CHOICE, &MainWindow::OnEjecutarClick, this);
-	chkOptimizar2Opt->Bind(wxEVT_CHECKBOX, &MainWindow::OnEjecutarClick, this);
+	choiceModoRuteo->Bind(wxEVT_CHOICE, &MainWindow::OnEjecutarClick, this);
 	
 	choiceFiltroZona->Bind(wxEVT_CHOICE, &MainWindow::OnFiltroZonaChange, this);
 	chkMostrarConflictos->Bind(wxEVT_CHECKBOX, &MainWindow::OnCapasToggle, this);
 	chkMostrarPesos->Bind(wxEVT_CHECKBOX, &MainWindow::OnCapasToggle, this);
 	
-	btnCompararCamino->Bind(wxEVT_BUTTON, &MainWindow::OnCompararCaminoClick, this);
+	btnTrazarDijkstra->Bind(wxEVT_BUTTON, &MainWindow::OnTrazarDijkstraClick, this);
 	btnLimpiarCamino->Bind(wxEVT_BUTTON, &MainWindow::OnLimpiarCaminoClick, this);
-	btnAgregarEntrega->Bind(wxEVT_BUTTON, &MainWindow::OnAgregarEntregaClick, this);
+	btnCargarTXT->Bind(wxEVT_BUTTON, &MainWindow::OnCargarTXTClick, this);
 	btnRestaurarMapa->Bind(wxEVT_BUTTON, &MainWindow::OnRestaurarMapaClick, this);
+	btnAgregarEntrega->Bind(wxEVT_BUTTON, &MainWindow::OnAgregarEntregaClick, this);
 	
 	poblarSelectoresNodos();
 	ejecutarSimulacionCompleta();
@@ -428,7 +442,7 @@ void MainWindow::poblarSelectoresNodos() {
 	
 	if (!idsComboNodos.empty()) {
 		choiceNodoOrigen->SetSelection(0);
-		choiceNodoDestino->SetSelection(idsComboNodos.size() > 14 ? 14 : idsComboNodos.size() - 1);
+		choiceNodoDestino->SetSelection(idsComboNodos.size() > 1 ? idsComboNodos.size() - 1 : 0);
 	}
 }
 
@@ -436,85 +450,100 @@ void MainWindow::ejecutarSimulacionCompleta() {
 	miGrafo.reiniciarColores();
 	lienzoMapa->establecerCaminoResaltado(vector<int>());
 	
-	miGrafo.precalcularMatrizDijkstra();
+	double tiempoMatriz = miGrafo.precalcularMatrizDijkstra();
 	
 	int umbral = spinUmbralConflicto->GetValue();
 	int capMax = spinCapacidadZona->GetValue();
 	int algCol = choiceAlgoritmoColoreado->GetSelection();
 	int modoConf = choiceModoConflicto->GetSelection();
-	bool usar2Opt = chkOptimizar2Opt->GetValue();
+	bool usarTSP = (choiceModoRuteo->GetSelection() == 0);
 	
+	// Comparar Welsh-Powell vs DSATUR y dejar aplicado el seleccionado
 	ResultadoColoreado resWP = miGrafo.colorearZonas(umbral, capMax, 0, modoConf);
 	ResultadoColoreado resDSATUR = miGrafo.colorearZonas(umbral, capMax, 1, modoConf);
 	ResultadoColoreado resActivo = miGrafo.colorearZonas(umbral, capMax, algCol, modoConf);
 	
-	vector<nodo*> depositos = miGrafo.obtenerNodosPorTipo(DEPOSITO);
-	if (depositos.empty()) return;
-	int idDepot = depositos.front()->getDato();
-	
-	vector<RutaZona> rutas = miGrafo.planificarRutasFlota(idDepot, usar2Opt);
+	vector<RutaZona> rutas = miGrafo.planificarRutasFlota();
 	
 	choiceFiltroZona->Clear();
 	choiceFiltroZona->Append("Mostrar Todas las Zonas");
 	for (const RutaZona& r : rutas) {
 		wxString lblZ;
-		lblZ << "Zona / Vehiculo #" << (r.idZona + 1) << " (" << r.cargaTotal << " paq)";
+		lblZ << "Zona #" << (r.idZona + 1) << " (D" << r.idDepot << " | " << r.cargaTotal << " paq)";
 		choiceFiltroZona->Append(lblZ);
 	}
 	choiceFiltroZona->SetSelection(0);
 	lienzoMapa->setZonaFiltro(-1);
 	
+	// Reporte completo
 	ostringstream oss;
 	oss << fixed << setprecision(1);
 	oss << "===============================================================================================\n";
-	oss << "  RESUMEN EJECUTIVO: SEGMENTACION POR COLOREADO + RUTEO TSP SOBRE RED VIAL OSM\n";
+	oss << "  1. RED VIAL Y DISTANCIAS DIJKSTRA (Matriz completa: " << tiempoMatriz << " us)\n";
 	oss << "===============================================================================================\n";
-	oss << "  * Red Vial Cargada        : " << miGrafo.cantidadNodos() << " Nodos (1 Depot, "
-		<< miGrafo.obtenerNodosPorTipo(ENTREGA).size() << " Entregas) | "
-		<< miGrafo.cantidadAristasUnicas() << " Tramos Viales\n";
-	oss << "  * Grafo de Conflictos     : " << resActivo.totalAristasConflicto
-		<< " aristas de restriccion (Umbral = " << umbral << " m)\n";
-	oss << "  * Comparativa Coloreado   : Welsh-Powell = " << resWP.totalZonas << " zonas (" << resWP.tiempoMicros << " us)"
-		<< "  |  DSATUR = " << resDSATUR.totalZonas << " zonas (" << resDSATUR.tiempoMicros << " us)\n\n";
 	
-	oss << "-----------------------------------------------------------------------------------------------\n";
-	oss << "  DETALLE DE RUTAS POR FLOTA / ZONA COLOREADA (Capacidad Max: " << capMax << " paq)\n";
-	oss << "-----------------------------------------------------------------------------------------------\n";
+	vector<nodo*> depots = miGrafo.obtenerNodosPorTipo(DEPOSITO);
+	vector<nodo*> entregas = miGrafo.obtenerNodosPorTipo(ENTREGA);
+	oss << "  Red: " << miGrafo.cantidadNodos() << " Nodos (" << depots.size() << " Depot(s), "
+		<< entregas.size() << " Entregas) | " << miGrafo.cantidadAristasUnicas() << " Calles\n";
 	
-	int totalGreedy = 0;
-	int total2Opt = 0;
-	int totalPaquetes = 0;
+	if (!depots.empty()) {
+		int idD0 = depots.front()->getDato();
+		ResultadoDijkstra d0 = miGrafo.Dijkstra(idD0);
+		oss << "  Distancias desde Depot D" << idD0 << " hacia entregas:\n";
+		for (nodo* e : entregas) {
+			int idE = e->getDato();
+			int dist = d0.distancias.count(idE) ? d0.distancias[idE] : numeric_limits<int>::max();
+			oss << "    [" << setw(2) << idE << "] " << left << setw(24) << e->getNombre() << right
+				<< " (" << setw(2) << e->getDemanda() << " paq) -> "
+				<< (dist == numeric_limits<int>::max() ? "INF" : to_string(dist) + " m")
+				<< " | Zona #" << (e->getColorZona() + 1) << "\n";
+		}
+	}
+	
+	oss << "\n===============================================================================================\n";
+	oss << "  2. COLOREADO DE ZONAS (Conflictos: " << resActivo.totalAristasConflicto
+		<< " aristas | Umbral: " << umbral << "m | Cap. Max: " << capMax << " paq)\n";
+	oss << "===============================================================================================\n";
+	oss << "  * Welsh-Powell : " << resWP.totalZonas << " zonas (" << resWP.tiempoMicros << " us)\n";
+	oss << "  * DSATUR       : " << resDSATUR.totalZonas << " zonas (" << resDSATUR.tiempoMicros << " us)\n";
+	
+	oss << "\n===============================================================================================\n";
+	oss << "  3. RUTAS POR VEHICULO (DIJKSTRA REPETIDO vs HEURISTICA TSP + 2-OPT)\n";
+	oss << "===============================================================================================\n";
+	
+	int sumDijk = 0, sumTSP = 0, sumPaq = 0;
+	double tSumDijk = 0.0, tSumTSP = 0.0;
 	
 	for (const RutaZona& r : rutas) {
-		totalGreedy += r.distGreedy;
-		total2Opt += r.dist2Opt;
-		totalPaquetes += r.cargaTotal;
+		sumDijk += r.distDijkstraRep;
+		sumTSP += r.distTSP;
+		sumPaq += r.cargaTotal;
+		tSumDijk += r.tiempoDijkstraRepMicros;
+		tSumTSP += r.tiempoTSPMicros;
 		
-		oss << "  [ZONA #" << (r.idZona + 1) << "] Carga: " << setw(2) << r.cargaTotal << "/" << capMax << " paq"
-			<< " | Dist. Greedy: " << setw(6) << r.distGreedy << "m (" << r.tiempoGreedyMicros << " us)"
-			<< " | Dist. 2-Opt: " << setw(6) << r.dist2Opt << "m (" << r.tiempo2OptMicros << " us)\n";
+		oss << "  [ZONA #" << (r.idZona + 1) << " | Depot D" << r.idDepot
+			<< " | Carga: " << r.cargaTotal << "/" << capMax << " paq]\n";
+		oss << "    - Dijkstra Repetido : " << setw(5) << r.distDijkstraRep << " m (" << setw(6)
+			<< r.tiempoDijkstraRepMicros << " us) | Visitas: ";
+		for (size_t i = 0; i < r.visitasDijkstraRep.size(); ++i)
+			oss << r.visitasDijkstraRep[i] << (i + 1 < r.visitasDijkstraRep.size() ? "->" : "\n");
 		
-		oss << "     -> Orden Visitas TSP : ";
-		for (size_t i = 0; i < r.ordenVisitasTSP.size(); ++i) {
-			oss << r.ordenVisitasTSP[i] << (i + 1 < r.ordenVisitasTSP.size() ? " -> " : "");
-		}
-		oss << "\n     -> Trazado Vial OSM  : ";
-		for (size_t i = 0; i < r.trazadoCalles.size(); ++i) {
-			oss << r.trazadoCalles[i] << (i + 1 < r.trazadoCalles.size() ? "-" : "");
-		}
-		oss << "\n";
+		oss << "    - TSP Simple + 2Opt : " << setw(5) << r.distTSP << " m (" << setw(6)
+			<< r.tiempoTSPMicros << " us) | Visitas: ";
+		for (size_t i = 0; i < r.visitasTSP.size(); ++i)
+			oss << r.visitasTSP[i] << (i + 1 < r.visitasTSP.size() ? "->" : "\n");
 	}
 	
 	oss << "-----------------------------------------------------------------------------------------------\n";
-	oss << "  METRICAS GLOBALES DE LA FLOTA:\n";
-	oss << "  * Total Vehiculos / Zonas : " << rutas.size() << " flotas activas  |  Carga Total: " << totalPaquetes << " paquetes\n";
-	oss << "  * Distancia Total Greedy  : " << totalGreedy << " metros\n";
-	oss << "  * Distancia Total 2-Opt   : " << total2Opt << " metros (Ahorro por 2-Opt: "
-		<< (totalGreedy - total2Opt) << " metros)\n";
+	oss << "  TOTAL FLOTA (" << rutas.size() << " vehiculos | " << sumPaq << " paquetes):\n";
+	oss << "    * Dijkstra Repetido : " << sumDijk << " m  | Tiempo total: " << tSumDijk << " us\n";
+	oss << "    * TSP Simple + 2Opt : " << sumTSP << " m  | Tiempo total: " << tSumTSP
+		<< " us | Ahorro: " << (sumDijk - sumTSP) << " m\n";
 	oss << "===============================================================================================\n";
 	
 	txtConsolaResultados->SetValue(wxString(oss.str()));
-	lienzoMapa->actualizarDatosVisuales(resActivo.grafoConflictos, rutas);
+	lienzoMapa->actualizarDatosVisuales(resActivo.grafoConflictos, rutas, usarTSP);
 }
 
 void MainWindow::OnEjecutarClick(wxCommandEvent& event) {
@@ -531,7 +560,7 @@ void MainWindow::OnCapasToggle(wxCommandEvent& event) {
 	lienzoMapa->setMostrarPesos(chkMostrarPesos->GetValue());
 }
 
-void MainWindow::OnCompararCaminoClick(wxCommandEvent& event) {
+void MainWindow::OnTrazarDijkstraClick(wxCommandEvent& event) {
 	int idxOrig = choiceNodoOrigen->GetSelection();
 	int idxDest = choiceNodoDestino->GetSelection();
 	if (idxOrig < 0 || idxDest < 0 ||
@@ -543,24 +572,24 @@ void MainWindow::OnCompararCaminoClick(wxCommandEvent& event) {
 		int idOrigen = idsComboNodos[idxOrig];
 		int idDestino = idsComboNodos[idxDest];
 		
-		ResultadoCamino resDijk = miGrafo.Dijkstra(idOrigen);
-		ResultadoCamino resAStar = miGrafo.AStar(idOrigen, idDestino);
-		
-		vector<int> camino = miGrafo.reconstruirCamino(idOrigen, idDestino, resDijk.predecesores);
+		ResultadoDijkstra res = miGrafo.Dijkstra(idOrigen);
+		vector<int> camino = miGrafo.reconstruirCamino(idOrigen, idDestino, res.predecesor);
 		lienzoMapa->establecerCaminoResaltado(camino);
 		
-		nodo* nOrig = miGrafo.buscarNodo(idOrigen);
-		nodo* nDest = miGrafo.buscarNodo(idDestino);
+		nodo* nO = miGrafo.buscarNodo(idOrigen);
+		nodo* nD = miGrafo.buscarNodo(idDestino);
 		
 		ostringstream oss;
 		oss << fixed << setprecision(2);
-		oss << "\n>>> COMPARATIVA CAMINO CORTO INDIVIDUAL: [" << idOrigen << "] "
-			<< (nOrig ? nOrig->getNombre() : "") << "  -->  [" << idDestino << "] "
-			<< (nDest ? nDest->getNombre() : "") << " <<<\n";
-		oss << "  * Distancia Optima en Red : " << resDijk.distancias[idDestino] << " metros\n";
-		oss << "  * Dijkstra Clasico        : " << resDijk.nodosExpandidos << " nodos expandidos  |  Tiempo: " << resDijk.tiempoMicros << " us\n";
-		oss << "  * A* (Heuristica Euclid.) : " << resAStar.nodosExpandidos << " nodos expandidos  |  Tiempo: " << resAStar.tiempoMicros << " us\n";
-		oss << "  * Secuencia de Calles     : ";
+		oss << "\n>>> CONSULTA DIJKSTRA: [" << idOrigen << "] " << (nO ? nO->getNombre() : "")
+			<< " --> [" << idDestino << "] " << (nD ? nD->getNombre() : "") << " <<<\n";
+		if (res.huboPesoNegativo) {
+			oss << "  [Aviso] Se detectaron pesos negativos en el grafo.\n";
+		}
+		int dist = res.distancias.count(idDestino) ? res.distancias[idDestino] : numeric_limits<int>::max();
+		oss << "  * Distancia optima : " << (dist == numeric_limits<int>::max() ? "No alcanzable" : to_string(dist) + " metros")
+			<< " | Tiempo: " << res.tiempoMicros << " us\n";
+		oss << "  * Ruta por calles  : ";
 		for (size_t i = 0; i < camino.size(); ++i) {
 			oss << camino[i] << (i + 1 < camino.size() ? " -> " : "\n");
 		}
@@ -570,6 +599,35 @@ void MainWindow::OnCompararCaminoClick(wxCommandEvent& event) {
 
 void MainWindow::OnLimpiarCaminoClick(wxCommandEvent& event) {
 	lienzoMapa->establecerCaminoResaltado(vector<int>());
+}
+
+void MainWindow::OnCargarTXTClick(wxCommandEvent& event) {
+	wxFileDialog dialogo(
+						 this,
+						 "Seleccionar archivo de mapa (.txt)",
+						 "",
+						 "",
+						 "Archivos de texto (*.txt)|*.txt|Todos los archivos (*.*)|*.*",
+						 wxFD_OPEN | wxFD_FILE_MUST_EXIST
+						 );
+	
+	if (dialogo.ShowModal() == wxID_CANCEL) return;
+	
+	string ruta = string(dialogo.GetPath().mb_str());
+	string error;
+	if (!miGrafo.cargarDesdeTXT(ruta, error)) {
+		wxMessageBox(wxString(error), "Error al cargar archivo", wxOK | wxICON_ERROR);
+		return;
+	}
+	
+	poblarSelectoresNodos();
+	ejecutarSimulacionCompleta();
+}
+
+void MainWindow::OnRestaurarMapaClick(wxCommandEvent& event) {
+	miGrafo.cargarRedVialOSM();
+	poblarSelectoresNodos();
+	ejecutarSimulacionCompleta();
 }
 
 void MainWindow::OnAgregarEntregaClick(wxCommandEvent& event) {
@@ -584,12 +642,6 @@ void MainWindow::OnAgregarEntregaClick(wxCommandEvent& event) {
 	double cy = static_cast<double>(spinCoordY->GetValue());
 	
 	miGrafo.insertarEntregaConectada(nombre, cx, cy, demanda);
-	poblarSelectoresNodos();
-	ejecutarSimulacionCompleta();
-}
-
-void MainWindow::OnRestaurarMapaClick(wxCommandEvent& event) {
-	miGrafo.cargarRedVialOSM();
 	poblarSelectoresNodos();
 	ejecutarSimulacionCompleta();
 }

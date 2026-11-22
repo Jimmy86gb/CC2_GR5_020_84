@@ -14,7 +14,7 @@
 #include <vector>
 #include <functional>
 
-#include "grafo.h"
+#include "Grafo.h"
 
 class MapaCanvas : public wxPanel {
 public:
@@ -22,7 +22,8 @@ public:
 	
 	void actualizarDatosVisuales(
 								 const std::map<int, std::set<int>>& conflictos,
-								 const std::vector<RutaZona>& rutas
+								 const std::vector<RutaZona>& rutas,
+								 bool dibujarTSP
 								 );
 	void establecerCaminoResaltado(const std::vector<int>& camino);
 	void setZonaFiltro(int zona);
@@ -38,6 +39,7 @@ private:
 	int zonaFiltro;
 	bool mostrarConflictos;
 	bool mostrarPesos;
+	bool usarRutasTSP;
 	std::function<void(int, int)> onClicMapa;
 	
 	void OnPaint(wxPaintEvent& event);
@@ -60,26 +62,27 @@ private:
 	wxSpinCtrl* spinUmbralConflicto;
 	wxSpinCtrl* spinCapacidadZona;
 	
-	// Seccion 2: Ruteo TSP y Capas
-	wxCheckBox* chkOptimizar2Opt;
+	// Seccion 2: Ruteo y Capas
+	wxChoice* choiceModoRuteo;
 	wxCheckBox* chkMostrarConflictos;
 	wxCheckBox* chkMostrarPesos;
 	wxChoice* choiceFiltroZona;
 	wxButton* btnEjecutarPipeline;
 	
-	// Seccion 3: Dijkstra vs A*
+	// Seccion 3: Consulta Dijkstra
 	wxChoice* choiceNodoOrigen;
 	wxChoice* choiceNodoDestino;
-	wxButton* btnCompararCamino;
+	wxButton* btnTrazarDijkstra;
 	wxButton* btnLimpiarCamino;
 	
-	// Seccion 4: Agregar Punto de Entrega
+	// Seccion 4: Carga TXT y Edicion
+	wxButton* btnCargarTXT;
+	wxButton* btnRestaurarMapa;
 	wxTextCtrl* txtNombreEntrega;
 	wxSpinCtrl* spinDemandaEntrega;
 	wxSpinCtrl* spinCoordX;
 	wxSpinCtrl* spinCoordY;
 	wxButton* btnAgregarEntrega;
-	wxButton* btnRestaurarMapa;
 	
 	// Mapa y consola de metricas
 	MapaCanvas* lienzoMapa;
@@ -91,10 +94,11 @@ private:
 	void OnEjecutarClick(wxCommandEvent& event);
 	void OnFiltroZonaChange(wxCommandEvent& event);
 	void OnCapasToggle(wxCommandEvent& event);
-	void OnCompararCaminoClick(wxCommandEvent& event);
+	void OnTrazarDijkstraClick(wxCommandEvent& event);
 	void OnLimpiarCaminoClick(wxCommandEvent& event);
-	void OnAgregarEntregaClick(wxCommandEvent& event);
+	void OnCargarTXTClick(wxCommandEvent& event);
 	void OnRestaurarMapaClick(wxCommandEvent& event);
+	void OnAgregarEntregaClick(wxCommandEvent& event);
 };
 
 #endif

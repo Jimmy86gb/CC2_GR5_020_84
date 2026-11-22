@@ -7,10 +7,11 @@
 #include <set>
 #include <string>
 
-struct ResultadoCamino {
+struct ResultadoDijkstra {
 	std::map<int, int> distancias;
-	std::map<int, int> predecesores;
-	int nodosExpandidos;
+	std::map<int, int> predecesor;
+	bool huboPesoNegativo;
+	bool falloDePropagacion;
 	double tiempoMicros;
 };
 
@@ -18,19 +19,24 @@ struct ResultadoColoreado {
 	int totalZonas;
 	int totalAristasConflicto;
 	std::map<int, std::set<int>> grafoConflictos;
-	std::map<int, int> coloresAsignados;
 	double tiempoMicros;
 };
 
 struct RutaZona {
 	int idZona;
-	std::vector<int> ordenVisitasTSP;
-	std::vector<int> trazadoCalles;
-	int distGreedy;
-	int dist2Opt;
-	double tiempoGreedyMicros;
-	double tiempo2OptMicros;
+	int idDepot;
 	int cargaTotal;
+	
+	// Comparativa Tarea 3: Dijkstra repetido vs Heuristica TSP simple
+	std::vector<int> visitasDijkstraRep;
+	std::vector<int> callesDijkstraRep;
+	int distDijkstraRep;
+	double tiempoDijkstraRepMicros;
+	
+	std::vector<int> visitasTSP;
+	std::vector<int> callesTSP;
+	int distTSP;
+	double tiempoTSPMicros;
 };
 
 class grafo {
@@ -39,6 +45,7 @@ private:
 	std::map<int, std::map<int, int>> matrizDistancias;
 	std::map<int, std::map<int, int>> matrizPredecesores;
 	
+	// Metodos internos de coloreado (Welsh-Powell y DSATUR)
 	std::map<int, int> colorearWelshPowell(
 										   const std::vector<nodo*>& entregas,
 										   const std::map<int, std::set<int>>& conflictos,
@@ -51,15 +58,16 @@ private:
 									  int capacidadMaxZona
 									  ) const;
 	
-	std::vector<int> construirTourGreedy(int idDeposito, const std::vector<int>& entregasZona) const;
-	std::vector<int> optimizarTour2Opt(const std::vector<int>& tourInicial) const;
+	// Metodos internos de ruteo
+	int buscarDepotMasCercano(const std::vector<int>& idsZona) const;
+	std::vector<int> construirTourTSP(int idDepot, const std::vector<int>& idsZona) const;
+	std::vector<int> mejorar2Opt(const std::vector<int>& tourInicial) const;
 	int evaluarCostoTour(const std::vector<int>& tour) const;
+	std::vector<int> expandirCalles(const std::vector<int>& tour) const;
 	
 public:
 	grafo();
 	~grafo();
-	
-	// Evita copias accidentales de punteros (previene doble liberacion de memoria)
 	grafo(const grafo&) = delete;
 	grafo& operator=(const grafo&) = delete;
 	
@@ -79,21 +87,21 @@ public:
 	int cantidadNodos() const;
 	int cantidadAristasUnicas() const;
 	
-	// Dataset OSM y edicion dinamica
+	// Carga de red vial (por defecto y desde archivo .txt)
 	void cargarRedVialOSM();
+	bool cargarDesdeTXT(const std::string& rutaArchivo, std::string& errorOut);
 	int insertarEntregaConectada(const std::string& nombre, double x, double y, int demanda);
 	
-	// Algoritmos de caminos cortos
-	ResultadoCamino Dijkstra(int valorInicial) const;
-	ResultadoCamino AStar(int valorInicial, int valorDestino) const;
-	std::vector<int> reconstruirCamino(int origen, int destino, const std::map<int, int>& predecesores) const;
-	void precalcularMatrizDijkstra();
+	// 1. Tu algoritmo Dijkstra + reconstruccion
+	ResultadoDijkstra Dijkstra(int valorInicial) const;
+	std::vector<int> reconstruirCamino(int origen, int destino, const std::map<int, int>& predecesor) const;
+	double precalcularMatrizDijkstra();
 	
-	// Algoritmo de coloreado de grafos (0 = Welsh-Powell, 1 = DSATUR)
+	// 2. Coloreado de grafos (0 = Welsh-Powell, 1 = DSATUR)
 	ResultadoColoreado colorearZonas(int umbralMetros, int capacidadMaxZona, int metodo, int modoConflicto);
 	
-	// Planificacion de rutas intra-zona (TSP Vecino Mas Cercano + 2-Opt)
-	std::vector<RutaZona> planificarRutasFlota(int idDeposito, bool aplicar2Opt) const;
+	// 3. Planificacion de rutas intra-zona (Dijkstra repetido vs TSP simple + 2-Opt)
+	std::vector<RutaZona> planificarRutasFlota() const;
 };
 
 #endif
