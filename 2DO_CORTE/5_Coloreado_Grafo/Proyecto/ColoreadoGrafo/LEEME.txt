@@ -1,0 +1,21 @@
+COLOREADO DE GRAFOS - C++14 / ZinjaI
+
+Proyecto original conservado (Nodo, GrafoColoreado, main y archivo .zpr).
+
+METODOS:
+1. Voraz: primer color disponible, en orden de insercion.
+2. Welsh-Powell: voraz en orden descendente de grado (metodo original).
+3. DSATUR: seleccion de mayor saturacion de colores vecinos.
+4. RLF: construccion de clases de vertices independientes.
+5. Exacto: backtracking con poda y seleccion DSATUR; calcula el numero cromatico.
+6. Comparar: presenta los totales de colores de todos los metodos.
+
+NOTAS:
+- Se colorean VERTICES de grafos simples, no aristas.
+- Voraz, Welsh-Powell, DSATUR y RLF son heuristicas: no garantizan el minimo.
+- Exacto si garantiza el minimo, pero se limita desde el menu a 16 vertices
+  porque el tiempo de calculo puede crecer exponencialmente.
+- Los colores se muestran al usuario comenzando en 1.
+- Compilar con C++14; abrir coloreado.zpr en ZinjaI.
+- Metodos como coloracion de aristas, listas o coloracion total son problemas
+  distintos, no variantes intercambiables del coloreado de vertices.
