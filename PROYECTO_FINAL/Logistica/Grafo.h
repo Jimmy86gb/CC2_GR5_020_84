@@ -88,7 +88,6 @@ public:
 	int cantidadAristasUnicas() const;
 	
 	// Carga de red vial (por defecto y desde archivo .txt)
-	void cargarRedVialOSM();
 	bool cargarDesdeTXT(const std::string& rutaArchivo, std::string& errorOut);
 	int insertarEntregaConectada(const std::string& nombre, double x, double y, int demanda);
 	

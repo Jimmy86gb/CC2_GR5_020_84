@@ -12,9 +12,19 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <string>
 #include <functional>
 
 #include "Grafo.h"
+
+struct ConfigApp {
+	std::string rutaMapaDefault;
+	int algoritmoColoreadoDefault;
+	int modoConflictoDefault;
+	int umbralConflictoDefault;
+	int capacidadZonaDefault;
+	int modoRuteoDefault;
+};
 
 class MapaCanvas : public wxPanel {
 public:
@@ -49,11 +59,12 @@ private:
 
 class MainWindow : public wxFrame {
 public:
-	MainWindow();
+	MainWindow(grafo* grafoRef, const ConfigApp& config);
 	virtual ~MainWindow();
 	
 private:
-	grafo miGrafo;
+	grafo* miGrafo;
+	ConfigApp configDefault;
 	std::vector<int> idsComboNodos;
 	
 	// Seccion 1: Coloreado
