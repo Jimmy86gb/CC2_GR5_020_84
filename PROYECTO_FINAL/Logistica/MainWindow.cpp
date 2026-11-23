@@ -297,22 +297,22 @@ MainWindow::MainWindow(grafo* grafoRef, const ConfigApp& config)
 	panel->SetBackgroundColour(wxColour(238, 242, 246));
 	
 	// SECCION 1: COLOREADO DE ZONAS
-	wxStaticText* lblSec1 = new wxStaticText(panel, wxID_ANY, "1. SEGMENTACION DE ZONAS (COLOREADO)", wxPoint(15, 10));
+	wxStaticText* lblSec1 = new wxStaticText(panel, wxID_ANY, "1.ZONAS (COLOREADO)", wxPoint(15, 10));
 	lblSec1->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
 	new wxStaticText(panel, wxID_ANY, "Algoritmo:", wxPoint(15, 36));
 	choiceAlgoritmoColoreado = new wxChoice(panel, wxID_ANY, wxPoint(155, 32), wxSize(185, 24));
-	choiceAlgoritmoColoreado->Append("Welsh-Powell (Grado)");
-	choiceAlgoritmoColoreado->Append("DSATUR (Saturacion)");
+	choiceAlgoritmoColoreado->Append("Welsh-Powell");
+	choiceAlgoritmoColoreado->Append("DSATUR");
 	choiceAlgoritmoColoreado->SetSelection(configDefault.algoritmoColoreadoDefault);
 	
 	new wxStaticText(panel, wxID_ANY, "Regla Conflicto:", wxPoint(15, 64));
 	choiceModoConflicto = new wxChoice(panel, wxID_ANY, wxPoint(155, 60), wxSize(185, 24));
-	choiceModoConflicto->Append("Lejania (Zonas Compactas)");
-	choiceModoConflicto->Append("Vecindad (Reparto Mixto)");
+	choiceModoConflicto->Append("Lejania ");
+	choiceModoConflicto->Append("Vecindad ");
 	choiceModoConflicto->SetSelection(configDefault.modoConflictoDefault);
 	
-	new wxStaticText(panel, wxID_ANY, "Umbral Conflicto (m):", wxPoint(15, 92));
+	new wxStaticText(panel, wxID_ANY, "Umbral(m):", wxPoint(15, 92));
 	spinUmbralConflicto = new wxSpinCtrl(
 										 panel, wxID_ANY, to_string(configDefault.umbralConflictoDefault),
 										 wxPoint(155, 88), wxSize(75, 24), wxSP_ARROW_KEYS, 80, 1500, configDefault.umbralConflictoDefault
@@ -327,27 +327,27 @@ MainWindow::MainWindow(grafo* grafoRef, const ConfigApp& config)
 	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 144));
 	
 	// SECCION 2: RUTEO INTRA-ZONA Y CAPAS
-	wxStaticText* lblSec2 = new wxStaticText(panel, wxID_ANY, "2. RUTEO POR ZONA Y CAPAS DEL MAPA", wxPoint(15, 160));
+	wxStaticText* lblSec2 = new wxStaticText(panel, wxID_ANY, "2. RUTAS Y MAPA", wxPoint(15, 160));
 	lblSec2->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	new wxStaticText(panel, wxID_ANY, "Mostrar Rutas:", wxPoint(15, 186));
+	new wxStaticText(panel, wxID_ANY, "Ruteo:", wxPoint(15, 186));
 	choiceModoRuteo = new wxChoice(panel, wxID_ANY, wxPoint(115, 182), wxSize(225, 24));
-	choiceModoRuteo->Append("Heuristica TSP Simple + 2-Opt");
-	choiceModoRuteo->Append("Dijkstra Repetido (Paso a Paso)");
+	choiceModoRuteo->Append("TSP + 2-Opt");
+	choiceModoRuteo->Append("Dijkstra Repetido");
 	choiceModoRuteo->SetSelection(configDefault.modoRuteoDefault);
 	
-	chkMostrarConflictos = new wxCheckBox(panel, wxID_ANY, "Dibujar Grafo de Conflictos (lineas rojas)", wxPoint(15, 212));
+	chkMostrarConflictos = new wxCheckBox(panel, wxID_ANY, "Dibujar Conflictos (lineas rojas)", wxPoint(15, 212));
 	chkMostrarConflictos->SetValue(false);
 	
-	chkMostrarPesos = new wxCheckBox(panel, wxID_ANY, "Mostrar Distancias (m) en las Calles", wxPoint(15, 234));
+	chkMostrarPesos = new wxCheckBox(panel, wxID_ANY, "Mostrar Distancias", wxPoint(15, 234));
 	chkMostrarPesos->SetValue(true);
 	
-	new wxStaticText(panel, wxID_ANY, "Filtrar Vehiculo:", wxPoint(15, 262));
+	new wxStaticText(panel, wxID_ANY, "Ver zona:", wxPoint(15, 262));
 	choiceFiltroZona = new wxChoice(panel, wxID_ANY, wxPoint(125, 258), wxSize(215, 24));
-	choiceFiltroZona->Append("Todas las Zonas");
+	choiceFiltroZona->Append("Todas");
 	choiceFiltroZona->SetSelection(0);
 	
-	btnEjecutarPipeline = new wxButton(panel, wxID_ANY, "EJECUTAR SEGMENTACION Y RUTAS", wxPoint(15, 290), wxSize(325, 32));
+	btnEjecutarPipeline = new wxButton(panel, wxID_ANY, "CALCULAR RUTAS", wxPoint(15, 290), wxSize(325, 32));
 	btnEjecutarPipeline->SetBackgroundColour(wxColour(52, 168, 83));
 	btnEjecutarPipeline->SetForegroundColour(wxColour(255, 255, 255));
 	btnEjecutarPipeline->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
@@ -355,7 +355,7 @@ MainWindow::MainWindow(grafo* grafoRef, const ConfigApp& config)
 	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 326));
 	
 	// SECCION 3: CONSULTA DIJKSTRA
-	wxStaticText* lblSec3 = new wxStaticText(panel, wxID_ANY, "3. CONSULTA DIJKSTRA (DEPOTS / POIs)", wxPoint(15, 342));
+	wxStaticText* lblSec3 = new wxStaticText(panel, wxID_ANY, "3. CONSULTA DIJKSTRA", wxPoint(15, 342));
 	lblSec3->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
 	new wxStaticText(panel, wxID_ANY, "Origen:", wxPoint(15, 368));
@@ -370,30 +370,30 @@ MainWindow::MainWindow(grafo* grafoRef, const ConfigApp& config)
 	new wxStaticText(panel, wxID_ANY, "------------------------------------------------------------------", wxPoint(15, 456));
 	
 	// SECCION 4: CARGAR MAPA TXT Y AGREGAR ENTREGAS
-	wxStaticText* lblSec4 = new wxStaticText(panel, wxID_ANY, "4. ARCHIVOS .TXT Y NUEVAS ENTREGAS", wxPoint(15, 472));
+	wxStaticText* lblSec4 = new wxStaticText(panel, wxID_ANY, "4. NUEVAS ENTREGAS Y CARGADO DE EJEMPLOS", wxPoint(15, 472));
 	lblSec4->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	btnCargarTXT = new wxButton(panel, wxID_ANY, "Cargar Mapa (.txt)...", wxPoint(15, 496), wxSize(175, 30));
+	new wxStaticText(panel, wxID_ANY, "Nombre:", wxPoint(15, 500));
+	txtNombreEntrega = new wxTextCtrl(panel, wxID_ANY, "Drogueria Central", wxPoint(75, 497), wxSize(175, 24));
+	
+	new wxStaticText(panel, wxID_ANY, "Paq:", wxPoint(258, 500));
+	spinDemandaEntrega = new wxSpinCtrl(panel, wxID_ANY, "9", wxPoint(288, 497), wxSize(52, 24), wxSP_ARROW_KEYS, 1, 50, 9);
+	
+	new wxStaticText(panel, wxID_ANY, "Coord X:", wxPoint(15, 530));
+	spinCoordX = new wxSpinCtrl(panel, wxID_ANY, "420", wxPoint(75, 527), wxSize(75, 24), wxSP_ARROW_KEYS, 30, 790, 420);
+	
+	new wxStaticText(panel, wxID_ANY, "Coord Y:", wxPoint(165, 530));
+	spinCoordY = new wxSpinCtrl(panel, wxID_ANY, "160", wxPoint(225, 527), wxSize(75, 24), wxSP_ARROW_KEYS, 35, 430, 160);
+	
+	btnAgregarEntrega = new wxButton(panel, wxID_ANY, "Anadir Entrega al Mapa (o clic en mapa)", wxPoint(15, 560), wxSize(325, 28));
+	
+	btnCargarTXT = new wxButton(panel, wxID_ANY, "Cargar Mapa (.txt)...", wxPoint(15, 598), wxSize(175, 30));
 	btnCargarTXT->SetBackgroundColour(wxColour(37, 99, 235));
 	btnCargarTXT->SetForegroundColour(wxColour(255, 255, 255));
 	btnCargarTXT->SetFont(wxFont(9, wxFONTFAMILY_SWISS, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 	
-	btnRestaurarMapa = new wxButton(panel, wxID_ANY, "Default (.txt)", wxPoint(200, 496), wxSize(140, 30));
-	
-	new wxStaticText(panel, wxID_ANY, "Nombre POI:", wxPoint(15, 536));
-	txtNombreEntrega = new wxTextCtrl(panel, wxID_ANY, "Drogueria Central", wxPoint(100, 533), wxSize(150, 24));
-	
-	new wxStaticText(panel, wxID_ANY, "Paq:", wxPoint(258, 536));
-	spinDemandaEntrega = new wxSpinCtrl(panel, wxID_ANY, "9", wxPoint(288, 533), wxSize(52, 24), wxSP_ARROW_KEYS, 1, 50, 9);
-	
-	new wxStaticText(panel, wxID_ANY, "Coord X:", wxPoint(15, 566));
-	spinCoordX = new wxSpinCtrl(panel, wxID_ANY, "420", wxPoint(75, 563), wxSize(75, 24), wxSP_ARROW_KEYS, 30, 790, 420);
-	
-	new wxStaticText(panel, wxID_ANY, "Coord Y:", wxPoint(165, 566));
-	spinCoordY = new wxSpinCtrl(panel, wxID_ANY, "160", wxPoint(225, 563), wxSize(75, 24), wxSP_ARROW_KEYS, 35, 430, 160);
-	
-	btnAgregarEntrega = new wxButton(panel, wxID_ANY, "Anadir Entrega al Mapa (o clic en mapa)", wxPoint(15, 596), wxSize(325, 28));
-	
+	btnRestaurarMapa = new wxButton(panel, wxID_ANY, "Default (.txt)", wxPoint(200, 598), wxSize(140, 30));
+
 	// DERECHA: LIENZO + CONSOLA
 	lienzoMapa = new MapaCanvas(panel, wxPoint(355, 12), wxSize(835, 455), miGrafo);
 	lienzoMapa->setCallbackClicMapa([this](int cx, int cy) {
