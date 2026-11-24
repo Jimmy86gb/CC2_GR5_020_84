@@ -16,7 +16,7 @@ tab_use_spaces=0
 explorer_path=.
 inspection_improving_template=wxString|>printf "%ls",${EXP}.m_impl._M_data()
 inherits_from=
-current_source=MainWindow.cpp
+current_source=Grafo.cpp
 path_char=\
 [source]
 path=Application.cpp
