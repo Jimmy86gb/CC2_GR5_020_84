@@ -28,7 +28,7 @@ cursor=66:0
 open=true
 [source]
 path=Grafo.cpp
-cursor=129:0
+cursor=160:50
 open=true
 [source]
 path=MainWindow.cpp
